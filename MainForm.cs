@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -8,10 +10,11 @@ using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography;
 using System.Windows.Forms;
 using ExifLib;
 using Microsoft.VisualBasic.FileIO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ImageComparer
 {
@@ -26,31 +29,38 @@ namespace ImageComparer
             public byte[] data;
         }
 
-        private List<imageInfo> BaseList;
+        private struct asyncWorkData
+        {
+            public string path;
+            public List<imageInfo> targetList;
+        }
+
+        private struct asyncResultData
+        {
+            public List<imageInfo> resultList;
+            public List<imageInfo> targetList;
+        }
+
+        private List<imageInfo> BaseList = new List<imageInfo>();
         private List<List<imageInfo>> CompareLists = new List<List<imageInfo>>();
         private int numDeleted;
 
         public MainForm()
         {
             InitializeComponent();
+            ExtLog.Logger = logger1;
         }
 
-        private void log(string s)
-        {
-            if (logTextBox.Lines.Length > 0) logTextBox.AppendText("\r\n" + s);
-            else logTextBox.Text = s;
-        }
-
-        private List<imageInfo> listFiles(string RootFolder)
-        {
-            return listFiles(RootFolder, RootFolder);
-        }
-        private List<imageInfo> listFiles(string RootFolder, string CurrentFolder)
+        private static List<imageInfo> listFiles(string RootFolder, string CurrentFolder)
         {
             var DI = new DirectoryInfo(CurrentFolder);
-            var list = DI.GetFiles("*.jpg").Select(
-                file => LoadImageFileInfo(file.FullName, RootFolder)
-                ).ToList();
+
+            var clist = new ConcurrentBag<imageInfo>();
+            Parallel.ForEach(DI.GetFiles("*.jpg"),
+                jpgFile => clist.Add(LoadImageFileInfo(jpgFile.FullName, RootFolder)));
+
+            var list = clist.ToList();
+
             foreach (var folder in DI.GetDirectories())
             {
                 list.AddRange(listFiles(RootFolder, folder.FullName));
@@ -66,38 +76,38 @@ namespace ImageComparer
                 for (var i = 0; i < CompareLists.Count; i++)
                 {
                     var nuldeletedbeforethisfolder = numDeleted;
-                    log("Scanning folder: " + compareFolderBox.Lines[i]);
+                    ExtLog.AddLine("Scanning folder: " + compareFolderBox.Lines[i]);
                     compareAndDelete(CompareLists[i], compareFolderBox.Lines[i]);
-                    log((numDeleted - nuldeletedbeforethisfolder).ToString("D") + " Files deleted.");
+                    ExtLog.AddLine((numDeleted - nuldeletedbeforethisfolder).ToString("D") + " Files deleted.");
                 }
-                log(numDeleted.ToString("D") + " Files deleted total.");
+                ExtLog.AddLine(numDeleted.ToString("D") + " Files deleted total.");
             }
-            else log("Error: No folders to compare.");
+            else ExtLog.AddLine("Error: No folders to compare.");
         }
 
         private void compareAndDelete(List<imageInfo> listToCompare, string StartFolder)
         {
-            for (var baseIndex = 0; baseIndex < BaseList.Count; baseIndex++)
+            Parallel.ForEach(BaseList, currentBaseImage =>
             {
                 for (var compareIndex = 0; compareIndex < listToCompare.Count; compareIndex++)
                 {
-
-                    //check dates + sizes
-                    //check data
-                    //safeDelete
-
-                    if (DateAndSizesEqual(BaseList[baseIndex], listToCompare[compareIndex]))
+                    if (DateAndSizesEqual(currentBaseImage, listToCompare[compareIndex]))
                     {
                         if ((File.Exists(listToCompare[compareIndex].filePath)) &&
-                            (DataEquals(BaseList[baseIndex], listToCompare[compareIndex]))) ;
+                            (DataEquals(currentBaseImage, listToCompare[compareIndex])))
                         {
-                            log("Deleting duplicate: " + removePath(listToCompare[compareIndex].filePath, StartFolder));
+                            ExtLog.AddLine("Deleting duplicate: " +
+                                removePath(listToCompare[compareIndex].filePath, StartFolder));
                             SafeDelete(listToCompare[compareIndex].filePath);
                         }
-
                     }
                 }
-            }
+
+
+            });
+
+
+
         }
 
         private static bool DateAndSizesEqual(imageInfo img1, imageInfo img2)
@@ -105,7 +115,7 @@ namespace ImageComparer
             return ((img1.dateTaken == img2.dateTaken) && (img1.width == img2.width) && (img1.height == img2.height));
         }
 
-        private bool DataEquals(imageInfo img1, imageInfo img2)
+        private static bool DataEquals(imageInfo img1, imageInfo img2)
         {
             var dataIsEqual = false;
             if (img1.data == null) img1.data = LoadImageFileData(img1.filePath);
@@ -125,16 +135,27 @@ namespace ImageComparer
 
         private void SafeDelete(string fullFileName)
         {
-            //FileSystem.DeleteFile(fullFileName, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-            numDeleted++;
+            if (File.Exists(fullFileName))
+            {
+                try
+                {
+                    FileSystem.DeleteFile(fullFileName, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                    numDeleted++;
+                }
+                catch (Exception ex)
+                {
+                    ExtLog.AddLine("Error deleting file \"" + fullFileName + "\"" + ex.Message);
+                }
+            }
+            else ExtLog.AddLine("Error deleting file \"" + fullFileName + "\" File not found");
         }
 
         private static string removePath(string FullName, string Path)
         {
             return FullName.Substring(Path.Length);
         }
-        
-        private imageInfo LoadImageFileInfo(string fullFileName, string RootFolder)
+
+        private static imageInfo LoadImageFileInfo(string fullFileName, string RootFolder)
         {
             var fi = new FileInfo(fullFileName);
             try
@@ -145,20 +166,20 @@ namespace ImageComparer
                     DateTime datePictureTaken;
                     if (!reader.GetTagValue(ExifTags.DateTimeDigitized, out datePictureTaken))
                     {
-                        log("Error reading [DateTimeDigitized] tag of: " + removePath(fullFileName, RootFolder));
+                        ExtLog.AddLine("Error reading [DateTimeDigitized] tag of: " + removePath(fullFileName, RootFolder));
                         datePictureTaken = fi.LastWriteTime;
                     }
 
                     object pictureWidth;
                     if (!reader.GetTagValue(ExifTags.PixelXDimension, out pictureWidth))
                     {
-                        log("Error reading [ImageWidth] tag of: " + removePath(fullFileName, RootFolder));
+                        ExtLog.AddLine("Error reading [ImageWidth] tag of: " + removePath(fullFileName, RootFolder));
                     }
 
                     object pictureHeight;
                     if (!reader.GetTagValue(ExifTags.PixelYDimension, out pictureHeight))
                     {
-                        log("Error reading [ImageLength] tag of: " + removePath(fullFileName, RootFolder));
+                        ExtLog.AddLine("Error reading [ImageLength] tag of: " + removePath(fullFileName, RootFolder));
                     }
 
                     return new imageInfo
@@ -173,8 +194,7 @@ namespace ImageComparer
             }
             catch (Exception ex)
             {
-                log("Error loading exif data: " + ex.Message);
-                log("Using basic image data for: " + fullFileName);
+                ExtLog.AddLine(string.Format("Error: {0}, in: {1}", ex.Message, removePath(fullFileName, RootFolder)));
 
                 using (var bp = new Bitmap(fullFileName))
                     return new imageInfo
@@ -188,7 +208,7 @@ namespace ImageComparer
             }
         }
 
-        public byte[] ImageToData(Bitmap data)
+        public static byte[] ImageToData(Bitmap data)
         {
             var pixelSize = Image.GetPixelFormatSize(data.PixelFormat) / 8;
             var pixelBufferSize = data.Width * data.Height * pixelSize;
@@ -202,7 +222,7 @@ namespace ImageComparer
             return pixelSource;
         }
 
-        private byte[] LoadImageFileData(string fullFileName)
+        private static byte[] LoadImageFileData(string fullFileName)
         {
             if (File.Exists(fullFileName))
             {
@@ -215,7 +235,7 @@ namespace ImageComparer
                 }
                 catch (Exception ex)
                 {
-                    log("Error loading image file data of " + fullFileName + " : " + ex.Message);
+                    ExtLog.AddLine("Error loading image file data of " + fullFileName + " : " + ex.Message);
                 }
             }
             return null;
@@ -223,12 +243,11 @@ namespace ImageComparer
 
         private void selectBaseFolderButton_Click(object sender, EventArgs e)
         {
-            //folderBrowserDialog1.SelectedPath = folderBrowserDialog1.RootFolder.ToString(); infuriating idea...
             if (folderBrowserDialog1.ShowDialog() == DialogResult.OK)
             {
                 baseFolderBox.Text = folderBrowserDialog1.SelectedPath;
-                BaseList = listFiles(baseFolderBox.Text);
-                log(BaseList.Count.ToString("D") + " Files Loaded.");
+
+                AsyncListFiles(folderBrowserDialog1.SelectedPath, BaseList);
             }
         }
 
@@ -248,10 +267,10 @@ namespace ImageComparer
                     if (compareFolderBox.Lines.Length > 0) compareFolderBox.AppendText("\r\n");
                     compareFolderBox.AppendText(folderBrowserDialog1.SelectedPath);
 
-                    CompareLists.Add(listFiles(folderBrowserDialog1.SelectedPath));
-                    log(CompareLists[CompareLists.Count - 1].Count.ToString("D") + " Files Loaded.");
+                    CompareLists.Add(new List<imageInfo>());
+                    AsyncListFiles(folderBrowserDialog1.SelectedPath, CompareLists[CompareLists.Count - 1]);
                 }
-                else log("Error Selecting Path: Path already selected as base path or compare path");
+                else ExtLog.AddLine("Error Selecting Path: Path already selected as base path or compare path");
             }
         }
 
@@ -261,6 +280,54 @@ namespace ImageComparer
             {
                 trashFolderBox.Text = folderBrowserDialog1.SelectedPath;
             }
+        }
+
+        private void AsyncListFiles(string listPath, List<imageInfo> targetResultList)
+        {
+            var workData = new asyncWorkData
+            {
+                path = listPath,
+                targetList = targetResultList
+            };
+            backgroundWorker1.RunWorkerAsync(workData);
+            //Enabled = false;
+            UseWaitCursor = true;
+        }
+
+        private void backgroundWorker1_DoWork(object sender, DoWorkEventArgs e)
+        {
+            var workArguments = (asyncWorkData)e.Argument;
+            if (workArguments.path != null)
+            {
+                var results = new asyncResultData
+                {
+                    targetList = workArguments.targetList,
+                    resultList = listFiles(workArguments.path, workArguments.path)
+                };
+                e.Result = results;
+            }
+        }
+
+        private void backgroundWorker1_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            UseWaitCursor = false;
+
+            if (e.Cancelled)
+            {
+                ExtLog.AddLine("Scan Cancelled.");
+            }
+            else
+            {
+                var workArguments = (asyncResultData)e.Result;
+                ExtLog.AddLine("Scan Completed.");
+                if (workArguments.resultList != null)
+                {
+                    ExtLog.AddLine(workArguments.resultList.Count.ToString("D") + " Files Loaded.");
+                    workArguments.targetList.Clear();
+                    workArguments.targetList.AddRange(workArguments.resultList);
+                }
+            }
+
         }
 
 

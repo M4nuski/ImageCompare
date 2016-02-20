@@ -29,7 +29,6 @@
         private void InitializeComponent()
         {
             this.startCompareButton = new System.Windows.Forms.Button();
-            this.logTextBox = new System.Windows.Forms.TextBox();
             this.baseFolderBox = new System.Windows.Forms.TextBox();
             this.compareFolderBox = new System.Windows.Forms.TextBox();
             this.trashFolderBox = new System.Windows.Forms.TextBox();
@@ -40,6 +39,8 @@
             this.clearCompareFolderListButton = new System.Windows.Forms.Button();
             this.searchEmptyFolderButton = new System.Windows.Forms.Button();
             this.bubbleEmptyPathButton = new System.Windows.Forms.Button();
+            this.backgroundWorker1 = new System.ComponentModel.BackgroundWorker();
+            this.logger1 = new ImageComparer.Logger();
             this.SuspendLayout();
             // 
             // startCompareButton
@@ -52,19 +53,10 @@
             this.startCompareButton.UseVisualStyleBackColor = true;
             this.startCompareButton.Click += new System.EventHandler(this.startCompareButton_Click);
             // 
-            // logTextBox
-            // 
-            this.logTextBox.Location = new System.Drawing.Point(152, 121);
-            this.logTextBox.Margin = new System.Windows.Forms.Padding(3, 6, 3, 3);
-            this.logTextBox.Multiline = true;
-            this.logTextBox.Name = "logTextBox";
-            this.logTextBox.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-            this.logTextBox.Size = new System.Drawing.Size(526, 278);
-            this.logTextBox.TabIndex = 1;
-            this.logTextBox.WordWrap = false;
-            // 
             // baseFolderBox
             // 
+            this.baseFolderBox.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
             this.baseFolderBox.Location = new System.Drawing.Point(152, 11);
             this.baseFolderBox.Name = "baseFolderBox";
             this.baseFolderBox.ReadOnly = true;
@@ -73,6 +65,8 @@
             // 
             // compareFolderBox
             // 
+            this.compareFolderBox.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
             this.compareFolderBox.Location = new System.Drawing.Point(152, 40);
             this.compareFolderBox.Multiline = true;
             this.compareFolderBox.Name = "compareFolderBox";
@@ -83,6 +77,8 @@
             // 
             // trashFolderBox
             // 
+            this.trashFolderBox.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
             this.trashFolderBox.Location = new System.Drawing.Point(153, 407);
             this.trashFolderBox.Name = "trashFolderBox";
             this.trashFolderBox.ReadOnly = true;
@@ -149,11 +145,39 @@
             this.bubbleEmptyPathButton.Text = "Bubble Empty Paths";
             this.bubbleEmptyPathButton.UseVisualStyleBackColor = true;
             // 
+            // backgroundWorker1
+            // 
+            this.backgroundWorker1.WorkerSupportsCancellation = true;
+            this.backgroundWorker1.DoWork += new System.ComponentModel.DoWorkEventHandler(this.backgroundWorker1_DoWork);
+            this.backgroundWorker1.RunWorkerCompleted += new System.ComponentModel.RunWorkerCompletedEventHandler(this.backgroundWorker1_RunWorkerCompleted);
+            // 
+            // logger1
+            // 
+            this.logger1.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.logger1.Count = 0;
+            this.logger1.CountStamp = false;
+            this.logger1.CountStampFormat = "D4";
+            this.logger1.DateStamp = false;
+            this.logger1.DateStampFormat = "yyyy-MM-dd";
+            this.logger1.Font = new System.Drawing.Font("Lucida Console", 9F);
+            this.logger1.Location = new System.Drawing.Point(152, 121);
+            this.logger1.Multiline = true;
+            this.logger1.Name = "logger1";
+            this.logger1.ReadOnly = true;
+            this.logger1.ScrollBars = System.Windows.Forms.ScrollBars.Both;
+            this.logger1.Size = new System.Drawing.Size(526, 278);
+            this.logger1.TabIndex = 11;
+            this.logger1.TimeStamp = true;
+            this.logger1.TimeStampFormat = "HH-mm-ss";
+            this.logger1.WordWrap = false;
+            // 
             // MainForm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(691, 439);
+            this.Controls.Add(this.logger1);
             this.Controls.Add(this.bubbleEmptyPathButton);
             this.Controls.Add(this.searchEmptyFolderButton);
             this.Controls.Add(this.clearCompareFolderListButton);
@@ -163,9 +187,9 @@
             this.Controls.Add(this.trashFolderBox);
             this.Controls.Add(this.compareFolderBox);
             this.Controls.Add(this.baseFolderBox);
-            this.Controls.Add(this.logTextBox);
             this.Controls.Add(this.startCompareButton);
             this.MaximizeBox = false;
+            this.MinimumSize = new System.Drawing.Size(478, 478);
             this.Name = "MainForm";
             this.Text = "Image Duplicate Finder";
             this.ResumeLayout(false);
@@ -176,7 +200,6 @@
         #endregion
 
         private System.Windows.Forms.Button startCompareButton;
-        private System.Windows.Forms.TextBox logTextBox;
         private System.Windows.Forms.TextBox baseFolderBox;
         private System.Windows.Forms.TextBox compareFolderBox;
         private System.Windows.Forms.TextBox trashFolderBox;
@@ -187,6 +210,8 @@
         private System.Windows.Forms.Button clearCompareFolderListButton;
         private System.Windows.Forms.Button searchEmptyFolderButton;
         private System.Windows.Forms.Button bubbleEmptyPathButton;
+        private Logger logger1;
+        private System.ComponentModel.BackgroundWorker backgroundWorker1;
     }
 }
 
