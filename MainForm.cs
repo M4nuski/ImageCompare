@@ -19,8 +19,7 @@ namespace ImageComparer
     {
         private struct imageInfo
         {
-            public string fileName;
-            public string fileRelativePath;
+            public string filePath;
             public string dateTaken;
             public int width;
             public int height;
@@ -28,7 +27,7 @@ namespace ImageComparer
         }
 
         private List<imageInfo> BaseList;
-        private List<List<imageInfo>> CompareLists;
+        private List<List<imageInfo>> CompareLists = new List<List<imageInfo>>();
         private int numDeleted;
 
         public MainForm()
@@ -46,7 +45,7 @@ namespace ImageComparer
         {
             return listFiles(RootFolder, RootFolder);
         }
-        private  List<imageInfo> listFiles(string RootFolder, string CurrentFolder)
+        private List<imageInfo> listFiles(string RootFolder, string CurrentFolder)
         {
             var DI = new DirectoryInfo(CurrentFolder);
             var list = DI.GetFiles("*.jpg").Select(
@@ -66,10 +65,14 @@ namespace ImageComparer
             {
                 for (var i = 0; i < CompareLists.Count; i++)
                 {
+                    var nuldeletedbeforethisfolder = numDeleted;
+                    log("Scanning folder: " + compareFolderBox.Lines[i]);
                     compareAndDelete(CompareLists[i], compareFolderBox.Lines[i]);
+                    log((numDeleted - nuldeletedbeforethisfolder).ToString("D") + " Files deleted.");
                 }
-                log(numDeleted.ToString("D") + " Files deleted.");
-            } else log("Error: No folders to compare.");
+                log(numDeleted.ToString("D") + " Files deleted total.");
+            }
+            else log("Error: No folders to compare.");
         }
 
         private void compareAndDelete(List<imageInfo> listToCompare, string StartFolder)
@@ -78,14 +81,26 @@ namespace ImageComparer
             {
                 for (var compareIndex = 0; compareIndex < listToCompare.Count; compareIndex++)
                 {
+
                     //check dates + sizes
-                       //check data
-                          //safeDelete
+                    //check data
+                    //safeDelete
+
+                    if (DateAndSizesEqual(BaseList[baseIndex], listToCompare[compareIndex]))
+                    {
+                        if ((File.Exists(listToCompare[compareIndex].filePath)) &&
+                            (DataEquals(BaseList[baseIndex], listToCompare[compareIndex]))) ;
+                        {
+                            log("Deleting duplicate: " + removePath(listToCompare[compareIndex].filePath, StartFolder));
+                            SafeDelete(listToCompare[compareIndex].filePath);
+                        }
+
+                    }
                 }
             }
         }
 
-        private bool DateAndSizesEqual(imageInfo img1, imageInfo img2)
+        private static bool DateAndSizesEqual(imageInfo img1, imageInfo img2)
         {
             return ((img1.dateTaken == img2.dateTaken) && (img1.width == img2.width) && (img1.height == img2.height));
         }
@@ -93,8 +108,8 @@ namespace ImageComparer
         private bool DataEquals(imageInfo img1, imageInfo img2)
         {
             var dataIsEqual = false;
-            if (img1.data == null) img1.data = LoadImageFileData(img1.fileRelativePath + img1.fileName);
-            if (img2.data == null) img2.data = LoadImageFileData(img2.fileRelativePath + img2.fileName);
+            if (img1.data == null) img1.data = LoadImageFileData(img1.filePath);
+            if (img2.data == null) img2.data = LoadImageFileData(img2.filePath);
             if ((img1.data != null) && (img2.data != null) && (img1.data.Length == img2.data.Length))
             {
                 dataIsEqual = true;
@@ -108,18 +123,17 @@ namespace ImageComparer
             return dataIsEqual;
         }
 
-        private static void SafeDelete(string fullFileName)
+        private void SafeDelete(string fullFileName)
         {
-            if (File.Exists(fullFileName)) FileSystem.DeleteFile(fullFileName, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+            //FileSystem.DeleteFile(fullFileName, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+            numDeleted++;
         }
 
         private static string removePath(string FullName, string Path)
         {
             return FullName.Substring(Path.Length);
         }
-
-
-
+        
         private imageInfo LoadImageFileInfo(string fullFileName, string RootFolder)
         {
             var fi = new FileInfo(fullFileName);
@@ -131,28 +145,27 @@ namespace ImageComparer
                     DateTime datePictureTaken;
                     if (!reader.GetTagValue(ExifTags.DateTimeDigitized, out datePictureTaken))
                     {
-                        log("Error reading [DateTimeDigitized] tag of: " + fullFileName);
+                        log("Error reading [DateTimeDigitized] tag of: " + removePath(fullFileName, RootFolder));
                         datePictureTaken = fi.LastWriteTime;
                     }
 
-                    UInt32 pictureWidth;
+                    object pictureWidth;
                     if (!reader.GetTagValue(ExifTags.PixelXDimension, out pictureWidth))
                     {
-                        log("Error reading [ImageWidth] tag of: " + fullFileName);
+                        log("Error reading [ImageWidth] tag of: " + removePath(fullFileName, RootFolder));
                     }
 
-                    UInt32 pictureHeight;
+                    object pictureHeight;
                     if (!reader.GetTagValue(ExifTags.PixelYDimension, out pictureHeight))
                     {
-                        log("Error reading [ImageLength] tag of: " + fullFileName);
+                        log("Error reading [ImageLength] tag of: " + removePath(fullFileName, RootFolder));
                     }
 
                     return new imageInfo
                     {
-                        fileName = fi.Name,
-                        fileRelativePath = removePath(fi.FullName, RootFolder),
-                        width = (int)pictureWidth,
-                        height = (int)pictureHeight,
+                        filePath = fullFileName,
+                        width = Convert.ToInt32(pictureWidth),
+                        height = Convert.ToInt32(pictureHeight),
                         dateTaken = datePictureTaken.ToString("yyyy-MM-dd hh-mm-ss"),
                         data = null
                     };
@@ -160,18 +173,18 @@ namespace ImageComparer
             }
             catch (Exception ex)
             {
-                log("Error loading exif data in " + fullFileName + ": " + ex.Message);
+                log("Error loading exif data: " + ex.Message);
+                log("Using basic image data for: " + fullFileName);
 
-                using (var bp = new Bitmap(fullFileName)) 
-                return new imageInfo
-                {
-                    fileName = fi.Name,
-                    fileRelativePath = removePath(fi.FullName, RootFolder),
-                    width = bp.Width,
-                    height = bp.Height,
-                    dateTaken = fi.LastWriteTime.ToString("yyyy-MM-dd hh-mm-ss"),
-                    data = null
-                };
+                using (var bp = new Bitmap(fullFileName))
+                    return new imageInfo
+                    {
+                        filePath = fullFileName,
+                        width = bp.Width,
+                        height = bp.Height,
+                        dateTaken = fi.LastWriteTime.ToString("yyyy-MM-dd hh-mm-ss"),
+                        data = null
+                    };
             }
         }
 
@@ -202,7 +215,7 @@ namespace ImageComparer
                 }
                 catch (Exception ex)
                 {
-                    log("Error loading image file data of "+fullFileName+" : " + ex.Message);
+                    log("Error loading image file data of " + fullFileName + " : " + ex.Message);
                 }
             }
             return null;
@@ -229,11 +242,16 @@ namespace ImageComparer
         {
             if (folderBrowserDialog1.ShowDialog() == DialogResult.OK)
             {
-                if (compareFolderBox.Lines.Length > 0) compareFolderBox.AppendText("\r\n");
-                compareFolderBox.AppendText(folderBrowserDialog1.SelectedPath);
+                if ((folderBrowserDialog1.SelectedPath != baseFolderBox.Text) &&
+                    (!compareFolderBox.Lines.Contains(folderBrowserDialog1.SelectedPath)))
+                {
+                    if (compareFolderBox.Lines.Length > 0) compareFolderBox.AppendText("\r\n");
+                    compareFolderBox.AppendText(folderBrowserDialog1.SelectedPath);
 
-                CompareLists.Add(listFiles(folderBrowserDialog1.SelectedPath));
-                log(CompareLists[CompareLists.Count-1].Count.ToString("D") + " Files Loaded.");
+                    CompareLists.Add(listFiles(folderBrowserDialog1.SelectedPath));
+                    log(CompareLists[CompareLists.Count - 1].Count.ToString("D") + " Files Loaded.");
+                }
+                else log("Error Selecting Path: Path already selected as base path or compare path");
             }
         }
 
