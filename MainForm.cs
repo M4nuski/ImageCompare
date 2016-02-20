@@ -85,7 +85,28 @@ namespace ImageComparer
             }
         }
 
+        private bool DateAndSizesEqual(imageInfo img1, imageInfo img2)
+        {
+            return ((img1.dateTaken == img2.dateTaken) && (img1.width == img2.width) && (img1.height == img2.height));
+        }
 
+        private bool DataEquals(imageInfo img1, imageInfo img2)
+        {
+            var dataIsEqual = false;
+            if (img1.data == null) img1.data = LoadImageFileData(img1.fileRelativePath + img1.fileName);
+            if (img2.data == null) img2.data = LoadImageFileData(img2.fileRelativePath + img2.fileName);
+            if ((img1.data != null) && (img2.data != null) && (img1.data.Length == img2.data.Length))
+            {
+                dataIsEqual = true;
+                var offset = 0;
+                while (dataIsEqual && (offset < img1.data.Length))
+                {
+                    dataIsEqual = (img1.data[offset] == img2.data[offset]);
+                    offset++;
+                }
+            }
+            return dataIsEqual;
+        }
 
         private static void SafeDelete(string fullFileName)
         {
@@ -97,19 +118,7 @@ namespace ImageComparer
             return FullName.Substring(Path.Length);
         }
 
-        public byte[] ImageToData(Bitmap data)
-        {
-            var pixelSize = Image.GetPixelFormatSize(data.PixelFormat) / 8;
-            var pixelBufferSize = data.Width * data.Height * pixelSize;
 
-            var pixelSource = new byte[pixelBufferSize];
-
-            var pixData = data.LockBits(new Rectangle(0, 0, data.Width, data.Height), ImageLockMode.ReadOnly, data.PixelFormat);
-            Marshal.Copy(pixData.Scan0, pixelSource, 0, pixelBufferSize);
-            data.UnlockBits(pixData);
-
-            return pixelSource;
-        }
 
         private imageInfo LoadImageFileInfo(string fullFileName, string RootFolder)
         {
@@ -164,6 +173,20 @@ namespace ImageComparer
                     data = null
                 };
             }
+        }
+
+        public byte[] ImageToData(Bitmap data)
+        {
+            var pixelSize = Image.GetPixelFormatSize(data.PixelFormat) / 8;
+            var pixelBufferSize = data.Width * data.Height * pixelSize;
+
+            var pixelSource = new byte[pixelBufferSize];
+
+            var pixData = data.LockBits(new Rectangle(0, 0, data.Width, data.Height), ImageLockMode.ReadOnly, data.PixelFormat);
+            Marshal.Copy(pixData.Scan0, pixelSource, 0, pixelBufferSize);
+            data.UnlockBits(pixData);
+
+            return pixelSource;
         }
 
         private byte[] LoadImageFileData(string fullFileName)
